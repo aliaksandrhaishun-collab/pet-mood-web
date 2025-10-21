@@ -2,7 +2,25 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import MonetizationCTAs from '../components/MonetizationCTAs';
 
+/* -------------------- FIRST-PARTY EVENT LOGGER -------------------- */
+async function logEvt(type: string, data: Record<string, any> = {}) {
+  try {
+    await fetch('/api/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, ...data }),
+    });
+  } catch {}
+}
+
+/* Small cookie helper (to read which CTA variant the user was assigned) */
+function getCookie(name: string) {
+  return document.cookie.split('; ').find(r => r.startsWith(name + '='))?.split('=')[1];
+}
+
+/* -------------------- API TYPES -------------------- */
 type ApiRaw = {
   blocked?: boolean;
   reason?: string;
@@ -10,7 +28,6 @@ type ApiRaw = {
   uploadId?: string;
   emotion?: { label?: string; confidence?: number };
   breed_guess?: { label?: string; confidence?: number };
-  mood_reason?: string;
   activity_suggestion?: string;
   toy_ideas?: string[];
   recommended_treat?: string;
@@ -21,6 +38,7 @@ type ApiRaw = {
 
 type ApiError = { error: string };
 
+/* -------------------- TEXT UTILS -------------------- */
 const s = (v: unknown, fb = '') => (typeof v === 'string' ? v : v == null ? fb : String(v));
 const lc = (t: string) => t.toLowerCase();
 
@@ -39,7 +57,7 @@ function titleCase(input: string): string {
 }
 const tc = (v: unknown, fb = '') => titleCase(s(v, fb));
 
-/** Map breed/label hints to a species label for UI phrasing. */
+/* -------------------- DOMAIN HELPERS -------------------- */
 function speciesFromBreed(label: string): string {
   const L = lc(label || '');
   if (/\b(cat|feline|siamese|maine coon|ragdoll|tabby)\b/.test(L)) return 'Cat';
@@ -52,11 +70,10 @@ function speciesFromBreed(label: string): string {
   return 'Pet';
 }
 
-/** Make vague tips concrete & step-by-step. NO generic catch-all fallback. */
+/** Make vague tips concrete & step-by-step. */
 function enrichCareTip(text: string): string {
   let t = s(text).trim();
 
-  // Upgrade common vague phrases into concrete, single actions
   t = t.replace(/check for debris\b\.?/i,
     'Check for debris between paw pads; remove with a damp cloth and snip tiny mats using blunt-nose scissors (don’t pull).'
   );
@@ -73,22 +90,19 @@ function enrichCareTip(text: string): string {
     'Brush the coat in sections toward growth; for a mat, hold hair at the base and work slowly with detangler.'
   );
 
-  // If still too short or generic, return empty to trigger mood-specific fallback
   if (t.length < 24 || /not clearly visible/i.test(t)) return '';
-
   return t;
 }
 
-/** Choose ONE actually useful care tip; guarantee something actionable and specific. */
+/** Choose ONE actually useful care tip. */
 function pickUsefulCareTip(care: ApiRaw['care'] | undefined, emotionLabel: string): string {
   const candidates = [s(care?.teeth), s(care?.paws), s(care?.eyes)]
-    .map((x) => tc(x))         // <-- wrap tc to avoid passing index/array
+    .map((x) => tc(x))
     .map((x) => enrichCareTip(x))
     .filter(Boolean);
 
   if (candidates[0]) return candidates[0];
 
-  // If nothing actionable from the model, synthesize ONE precise action from mood
   const mood = lc(s(emotionLabel));
   if (/angry|anxious|fearful|stressed/.test(mood)) {
     return 'Create a calm space: lights low, white-noise on; offer a long-lasting chew for 10–15 minutes to reduce arousal.';
@@ -106,47 +120,10 @@ function pickUsefulCareTip(care: ApiRaw['care'] | undefined, emotionLabel: strin
     return 'After play, inspect paw pads for abrasions; wipe with pet-safe wipes and let them dry fully.';
   }
 
-  // Last-resort single, concrete action (not a generic checklist)
   return 'Brush teeth with pet-safe toothpaste tonight (30–60s per side); book a dental cleaning if tartar is heavy.';
 }
 
-
-/** Assertive, species-aware “Why” — removes “The Pet is The Dog is…” and polishes wording. */
-function makeAssertiveWhySpecies(input: string, species: string): string {
-  let t = s(input).trim();
-  if (!t) return '';
-
-  // Normalize hedging
-  t = t.replace(/\b(appears to be|appears|seems to be|seems)\b/gi, 'is');
-
-  // Remove any leading "The pet is", "The animal is", and repeated "The <Species> is"
-  t = t.replace(/^\s*(the\s+(pet|animal)\s+is\s+)/i, '');
-  // Remove duplicates like "The Dog is The Dog is ..."
-  t = t.replace(new RegExp(`^\\s*The\\s+${species}\\s+is\\s+`, 'i'), '');
-  t = t.replace(new RegExp(`^\\s*The\\s+${species}\\s+is\\s+`, 'i'), ''); // run twice to be safe
-
-  // Improve connectors & terms
-  t = t.replace(/\s+or\s+/gi, ' and ');
-  t = t.replace(/\bgrowl\b/gi, 'growling');
-  t = t.replace(/\baggression\b/gi, 'aggressive behavior');
-  t = t.replace(/\bshowing\s+showing\b/gi, 'showing ');
-
-  // Ensure it reads naturally after our removals
-  // If it starts with "is", prepend a subject
-  t = t.replace(/^\s*is\s+/i, '');
-  // Lowercase first word to blend with "The Dog is ..."
-  t = t.replace(/^([A-Z])/, (m) => m.toLowerCase());
-
-  // Final build
-  let out = `The ${species} is ${t}`;
-  // Clean any accidental "is is"
-  out = out.replace(/\bis\s+is\b/gi, 'is ');
-  // Punctuate
-  if (!/[.!?]$/.test(out)) out += '.';
-  return out;
-}
-
-/** Reusable Analyze button (always under the preview in this layout). */
+/* -------------------- UI: Analyze button -------------------- */
 function AnalyzeBtn({
   onClick,
   disabled,
@@ -176,6 +153,7 @@ function AnalyzeBtn({
   );
 }
 
+/* -------------------- MAIN -------------------- */
 export default function HomeClient() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -191,10 +169,7 @@ export default function HomeClient() {
   // Reveal animation timing
   useEffect(() => {
     if (!result || result.blocked) {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       return;
     }
 
@@ -203,7 +178,8 @@ export default function HomeClient() {
 
     const id = window.setInterval(() => {
       setRevealStep((n) => {
-        if (n >= 9) {
+        // 8 reveal steps total (1..8)
+        if (n >= 8) {
           clearInterval(id);
           timerRef.current = null;
           return n;
@@ -230,15 +206,20 @@ export default function HomeClient() {
     return typeof x === 'object' && x !== null && 'error' in x && typeof (x as { error: unknown }).error === 'string';
   }
 
+  /* -------------------- TRACKED ANALYZE FLOW -------------------- */
   async function onAnalyze() {
     if (!file) return;
     setLoading(true);
     setErr(null);
+
+    // Upload started
+    logEvt('Upload_Start');
+
     try {
       const form = new FormData();
       form.append('image', file);
       const res = await fetch('/api/analyze', { method: 'POST', body: form });
-      const data: unknown = await res.json().catch(() => ({}));
+      const data: any = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         let msg = 'Please upload a clear photo of your pet.';
@@ -250,6 +231,10 @@ export default function HomeClient() {
 
       setResult(data as ApiRaw);
       setAnimKey((k) => k + 1);
+
+      // Upload completed (tie to analysis)
+      if (data?.uploadId) logEvt('Upload_Complete', { uploadId: data.uploadId });
+      else logEvt('Upload_Complete');
     } catch (e) {
       console.error('Analyze error:', e);
       setErr('Something went wrong. Please try again.');
@@ -269,10 +254,6 @@ export default function HomeClient() {
     const emotionLabel = tc(result.emotion?.label || '');
     const emotionConf = Math.round((result.emotion?.confidence ?? 0) * 100);
 
-    // Why — assertive + species-aware; no duplicates
-    const whyRaw = tc(result.mood_reason || '');
-    const why = makeAssertiveWhySpecies(whyRaw, species);
-
     const activity = tc(result.activity_suggestion || '');
     const toys = (result.toy_ideas || []).map((t) => tc(t)).slice(0, 2);
     const treat = tc(result.recommended_treat || result.favorite_treat || '');
@@ -282,7 +263,7 @@ export default function HomeClient() {
 
     const ctas = (result.cta_links || []).filter((c) => c?.label && c?.url);
 
-    return { species, breed, emotionLabel, emotionConf, why, activity, toys, treat, careOne, ctas };
+    return { species, breed, emotionLabel, emotionConf, activity, toys, treat, careOne, ctas };
   }, [result]);
 
   return (
@@ -349,27 +330,48 @@ export default function HomeClient() {
                   <Row label="Emotion" value={`${view.emotionLabel} (${view.emotionConf}%)`} />
                 </Reveal>
                 <Reveal step={revealStep} index={3}>
-                  <Row label="Why" value={view.why} />
-                </Reveal>
-                <Reveal step={revealStep} index={4}>
                   <Row label="Suggested Activity" value={view.activity} />
                 </Reveal>
-                <Reveal step={revealStep} index={5}>
+                <Reveal step={revealStep} index={4}>
                   <Row label="Toy Ideas" value={view.toys.join('\n')} />
                 </Reveal>
-                <Reveal step={revealStep} index={6}>
+                <Reveal step={revealStep} index={5}>
                   <Row label="Recommended Treat" value={view.treat} />
                 </Reveal>
-                <Reveal step={revealStep} index={7}>
+                <Reveal step={revealStep} index={6}>
                   <Row label="Care Tip" value={view.careOne} />
                 </Reveal>
               </div>
 
+              {/* Monetization CTA (after Care Tip) */}
+              <Reveal step={revealStep} index={7}>
+                <MonetizationCTAs uploadId={result?.uploadId} />
+              </Reveal>
+
+              {/* Affiliate/product links — now with click logging */}
               <Reveal step={revealStep} index={8}>
                 {(view.ctas || []).length > 0 && (
                   <div className="pm-ctas">
                     {view.ctas!.map((c, i) => (
-                      <a key={i} className="pm-cta" href={c.url} target="_blank" rel="noreferrer">
+                      <a
+                        key={i}
+                        className="pm-cta"
+                        href={c.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => {
+                          const variant = getCookie('pm_variant');
+                          logEvt('Product_Click', {
+                            variant,
+                            label: c.label,
+                            url: c.url,               // raw url for analysis
+                            uploadId: result?.uploadId,
+                          });
+                          // optional mirrors
+                          try { /* @ts-ignore */ if (typeof fbq === 'function') fbq('trackCustom', 'Product_Click', { variant, label: c.label, uploadId: result?.uploadId }); } catch {}
+                          try { /* @ts-ignore */ if (typeof gtag === 'function') gtag('event', 'Product_Click', { variant, label: c.label, uploadId: result?.uploadId }); } catch {}
+                        }}
+                      >
                         {c.label} ↗
                       </a>
                     ))}
@@ -384,6 +386,7 @@ export default function HomeClient() {
   );
 }
 
+/* -------------------- UI Bits -------------------- */
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="pm-bubbleRowCard">

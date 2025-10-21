@@ -18,7 +18,6 @@ If it does NOT, return ONLY:
 If it DOES show an animal, return ONE JSON object ONLY (no extra text):
 {
   "emotion": { "label": one of ["Happy","Excited","Relaxed","Content","Curious","Playful","Alert","Bored","Anxious","Stressed","Fearful","Sad","Angry","Tired"], "confidence": [0,1] },
-  "mood_reason": string,  // Write confidently, avoid "appears". Refer to the species explicitly when clear (e.g., "The Dog is showing...").
   "activity_suggestion": string,
   "breed_guess": { "label": string, "confidence": [0,1] },
   "toy_ideas": string[],   // 2 concise items, each formatted "Toy — why it fits"
@@ -33,7 +32,6 @@ Rules:
 - Keep text concise, factual, JSON only.
 - Vary wording naturally based on visible cues — avoid repeating stock phrases.`;
 
-
 type EmotionRaw = { label?: unknown; confidence?: unknown };
 type BreedRaw = { label?: unknown; confidence?: unknown };
 type CareRaw = { teeth?: unknown; paws?: unknown; eyes?: unknown };
@@ -42,7 +40,6 @@ type Parsed = {
   blocked?: boolean;
   reason?: string;
   emotion?: EmotionRaw | unknown;
-  mood_reason?: unknown;
   activity_suggestion?: unknown;
   breed_guess?: BreedRaw | unknown;
   toy_ideas?: unknown;
@@ -55,7 +52,6 @@ type SafeResult = {
   blocked?: boolean;
   reason?: string;
   emotion: { label: string; confidence: number };
-  mood_reason: string;
   activity_suggestion: string;
   breed_guess: { label: string; confidence: number };
   toy_ideas: string[];
@@ -158,7 +154,6 @@ export async function POST(req: NextRequest) {
         label: sanitizeEmotionLabel(toStr(emotionrec.label ?? '')),
         confidence: toNum01(emotionrec.confidence, 0.5),
       },
-      mood_reason: toStr(prelim.mood_reason ?? '').slice(0, 140),
       activity_suggestion: toStr(prelim.activity_suggestion ?? '').slice(0, 120),
       breed_guess: {
         label: toStr(breedrec.label ?? '')
