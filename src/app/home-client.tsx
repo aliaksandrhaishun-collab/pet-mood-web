@@ -4,15 +4,20 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import MonetizationCTAs from '../components/MonetizationCTAs';
 
+// Optional analytics globals (no ts-ignore needed)
+declare const fbq: ((...args: unknown[]) => void) | undefined;
+declare const gtag: ((...args: unknown[]) => void) | undefined;
+
 /* -------------------- FIRST-PARTY EVENT LOGGER -------------------- */
-async function logEvt(type: string, data: Record<string, any> = {}) {
+async function logEvt(type: string, data: Record<string, unknown> = {}) {
   try {
     await fetch('/api/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type, ...data }),
+      keepalive: true,
     });
-  } catch {}
+  } catch { /* ignore */ }
 }
 
 /* Small cookie helper (to read which CTA variant the user was assigned) */
@@ -178,7 +183,6 @@ export default function HomeClient() {
 
     const id = window.setInterval(() => {
       setRevealStep((n) => {
-        // 8 reveal steps total (1..8)
         if (n >= 8) {
           clearInterval(id);
           timerRef.current = null;
@@ -212,14 +216,13 @@ export default function HomeClient() {
     setLoading(true);
     setErr(null);
 
-    // Upload started
     logEvt('Upload_Start');
 
     try {
       const form = new FormData();
       form.append('image', file);
       const res = await fetch('/api/analyze', { method: 'POST', body: form });
-      const data: any = await res.json().catch(() => ({}));
+      const data: unknown = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         let msg = 'Please upload a clear photo of your pet.';
@@ -229,15 +232,15 @@ export default function HomeClient() {
         return;
       }
 
-      setResult(data as ApiRaw);
+      const payload = data as ApiRaw;
+      setResult(payload);
       setAnimKey((k) => k + 1);
 
-      // Upload completed (tie to analysis)
-      if (data?.uploadId) logEvt('Upload_Complete', { uploadId: data.uploadId });
+      if (payload?.uploadId) logEvt('Upload_Complete', { uploadId: payload.uploadId });
       else logEvt('Upload_Complete');
     } catch (e) {
       console.error('Analyze error:', e);
-      setErr('Something went wrong. Please try again.');
+      setErr('Analyze failed');
     } finally {
       setLoading(false);
     }
@@ -258,7 +261,6 @@ export default function HomeClient() {
     const toys = (result.toy_ideas || []).map((t) => tc(t)).slice(0, 2);
     const treat = tc(result.recommended_treat || result.favorite_treat || '');
 
-    // Exactly ONE actionable care tip
     const careOne = pickUsefulCareTip(result.care, emotionLabel);
 
     const ctas = (result.cta_links || []).filter((c) => c?.label && c?.url);
@@ -279,7 +281,6 @@ export default function HomeClient() {
         </header>
 
         <section className="pm-card">
-          {/* Upload Section — vertical: button → preview → analyze */}
           <div className="pm-uploader pm-uploader-vertical">
             <label className="pm-uploadBtn">
               <input
@@ -318,7 +319,6 @@ export default function HomeClient() {
             {result?.blocked && <div className="pm-note">Please upload a clear pet photo.</div>}
           </div>
 
-          {/* Results Section */}
           {view && (
             <div className="pm-resultPanel pm-resultFixed">
               <h3>Result</h3>
@@ -343,12 +343,10 @@ export default function HomeClient() {
                 </Reveal>
               </div>
 
-              {/* Monetization CTA (after Care Tip) */}
               <Reveal step={revealStep} index={7}>
                 <MonetizationCTAs uploadId={result?.uploadId} />
               </Reveal>
 
-              {/* Affiliate/product links — now with click logging */}
               <Reveal step={revealStep} index={8}>
                 {(view.ctas || []).length > 0 && (
                   <div className="pm-ctas">
@@ -364,12 +362,11 @@ export default function HomeClient() {
                           logEvt('Product_Click', {
                             variant,
                             label: c.label,
-                            url: c.url,               // raw url for analysis
+                            url: c.url,
                             uploadId: result?.uploadId,
                           });
-                          // optional mirrors
-                          try { /* @ts-ignore */ if (typeof fbq === 'function') fbq('trackCustom', 'Product_Click', { variant, label: c.label, uploadId: result?.uploadId }); } catch {}
-                          try { /* @ts-ignore */ if (typeof gtag === 'function') gtag('event', 'Product_Click', { variant, label: c.label, uploadId: result?.uploadId }); } catch {}
+                          try { if (typeof fbq === 'function') fbq('trackCustom', 'Product_Click', { variant, label: c.label, uploadId: result?.uploadId }); } catch {}
+                          try { if (typeof gtag === 'function') gtag('event', 'Product_Click', { variant, label: c.label, uploadId: result?.uploadId }); } catch {}
                         }}
                       >
                         {c.label} ↗
