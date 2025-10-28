@@ -8,6 +8,9 @@ export const dynamic = 'force-dynamic';
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
+// 👇 read the Blob token linked in Vercel (env → All Environments)
+const BLOB_TOKEN = process.env.BLOBV2_READ_WRITE_TOKEN;
+
 /**
  * SYSTEM prompt: does both pet validation and concise structured output.
  */
@@ -103,6 +106,11 @@ function sanitizeEmotionLabel(s: string): string {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!BLOB_TOKEN) {
+      console.error('Blob token missing: set BLOBV2_READ_WRITE_TOKEN in env');
+      return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
+    }
+
     const email = (await cookies()).get('pm_email')?.value || '';
     if (!email)
       return NextResponse.json({ error: 'Email required' }, { status: 401 });
@@ -146,8 +154,8 @@ export async function POST(req: NextRequest) {
       );
 
     const emotionrec = asRecord(prelim.emotion);
-    const breedrec = asRecord(prelim.breed_guess);
-    const carerec = asRecord(prelim.care);
+    const breedrec  = asRecord(prelim.breed_guess);
+    const carerec   = asRecord(prelim.care);
 
     const safe: SafeResult = {
       emotion: {
@@ -166,8 +174,8 @@ export async function POST(req: NextRequest) {
       recommended_treat: toStr(prelim.recommended_treat ?? prelim.favorite_treat ?? '').slice(0, 60),
       care: {
         teeth: toStr(carerec.teeth ?? 'Not Clearly Visible').slice(0, 80),
-        paws: toStr(carerec.paws ?? 'Not Clearly Visible').slice(0, 80),
-        eyes: toStr(carerec.eyes ?? 'Not Clearly Visible').slice(0, 80),
+        paws:  toStr(carerec.paws  ?? 'Not Clearly Visible').slice(0, 80),
+        eyes:  toStr(carerec.eyes  ?? 'Not Clearly Visible').slice(0, 80),
       },
     };
 
@@ -178,7 +186,7 @@ export async function POST(req: NextRequest) {
     }
 
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const imgPath = `uploads/${id}.jpg`;
+    const imgPath  = `uploads/${id}.jpg`;
     const metaPath = `uploads/meta/${id}.json`;
 
     const record = {
@@ -191,13 +199,19 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString(),
     };
 
-    // Save blob and metadata concurrently
+    // Save blob and metadata concurrently (with token)
     const [img] = await Promise.all([
-      put(imgPath, buf, { access: 'public', contentType: mime, addRandomSuffix: false }),
+      put(imgPath, buf, {
+        access: 'public',
+        contentType: mime,
+        addRandomSuffix: false,
+        token: BLOB_TOKEN,          // 👈 important
+      }),
       put(metaPath, JSON.stringify(record, null, 2), {
         access: 'public',
         contentType: 'application/json',
         addRandomSuffix: false,
+        token: BLOB_TOKEN,          // 👈 important
       }),
     ]);
 
