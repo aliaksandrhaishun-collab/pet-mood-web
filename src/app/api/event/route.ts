@@ -24,7 +24,7 @@ async function ensureSession() {
 
 export async function POST(req: NextRequest) {
   try {
-    const sid = await ensureSession(); // <-- await
+    const sid = await ensureSession();
     const payload = await req.json().catch(() => ({}));
     const now = new Date().toISOString();
 
@@ -40,13 +40,14 @@ export async function POST(req: NextRequest) {
       ua: req.headers.get('user-agent') || '',
     };
 
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.json`;
-    const key = `events/${evt.type}/${now.slice(0,10)}/${id}`;
+    // 🔒 safer, more unique key generation
+    const nonce = Math.random().toString(36).slice(2, 10);
+    const key = `events/${evt.type}/${now.slice(0,10)}/${Date.now()}-${nonce}.json`;
 
     await put(key, JSON.stringify(evt), {
-      access: 'private',
+      access: 'public',                // required by @vercel/blob typings
       contentType: 'application/json',
-      addRandomSuffix: false,
+      addRandomSuffix: true,           // adds an extra unguessable suffix
     });
 
     return NextResponse.json({ ok: true });
