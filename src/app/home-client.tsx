@@ -282,15 +282,24 @@ export default function HomeClient() {
 
         <section className="pm-card">
           <div className="pm-uploader pm-uploader-vertical">
-            <label className="pm-uploadBtn">
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={onPick}
-                style={{ display: 'none' }}
-              />
-              <span>Take / Choose Photo</span>
+            {/* File input (visually hidden but clickable via label) */}
+            <input
+              id="pm-file"
+              type="file"
+              accept="image/*"
+              onChange={onPick}
+              // Do NOT use the `capture` attribute if you want the chooser.
+              // Keep the element focusable; don't use display:none on iOS.
+              style={{
+                position: 'absolute',
+                left: '-9999px',
+                width: 1,
+                height: 1,
+                opacity: 0,
+              }}
+            />
+            <label className="pm-uploadBtn" htmlFor="pm-file">
+              <span>Upload or Take Photo</span>
             </label>
 
             {preview && (
@@ -374,6 +383,7 @@ export default function HomeClient() {
                     ))}
                   </div>
                 )}
+                <PricingSurvey uploadId={result?.uploadId} />
               </Reveal>
             </div>
           )}
@@ -401,5 +411,72 @@ function Reveal({ step, index, children }: { step: number; index: number; childr
     <div className={`pm-reveal ${visible ? 'show' : 'hide'}`} aria-hidden={!visible}>
       {visible ? children : null}
     </div>
+  );
+}
+
+function PricingSurvey({ uploadId }: { uploadId?: string }) {
+  const [value, setValue] = React.useState<string>('');
+  const [submitted, setSubmitted] = React.useState(false);
+  const variant = getCookie('pm_variant');
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!value || submitted) return;
+
+    await logEvt('WTP_Submit', {
+      price: value === 'not' ? 'Not interested' : `$${value}/m`,
+      variant,
+      uploadId,
+    });
+
+    setSubmitted(true);
+  }
+
+  // After submission, replace the form with a visible thank-you message
+  if (submitted) {
+    return (
+      <div
+        style={{
+          marginTop: 16,
+          padding: '12px',
+          borderRadius: 8,
+          background: '#f0f9f4',
+          color: '#2a7a45',
+          textAlign: 'center',
+          fontWeight: 600,
+        }}
+      >
+        Thanks for your feedback! ❤️
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={onSubmit} style={{ marginTop: 12 }}>
+      <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>
+        Would you pay for this?
+      </label>
+
+      <select
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        style={{ width: '100%', padding: '10px', borderRadius: 8, border: '1px solid #dbe2ea' }}
+      >
+        <option value="">Select an option…</option>
+        <option value="2.99">$2.99/m</option>
+        <option value="4.99">$4.99/m</option>
+        <option value="7.99">$7.99/m</option>
+        <option value="not">Not interested</option>
+      </select>
+
+      <button
+        type="submit"
+        disabled={!value}
+        className={`pm-primary ${!value ? 'pm-disabled' : ''}`}
+        style={{ marginTop: 10, width: '100%' }}
+      >
+        Submit
+      </button>
+    </form>
   );
 }
