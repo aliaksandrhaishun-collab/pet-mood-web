@@ -5,18 +5,19 @@ import { cookies } from 'next/headers';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// per-user session id (non-PII)
+// 👇 read the linked Blob secret from env
+const BLOB_TOKEN = process.env.BLOBV2_READ_WRITE_TOKEN;
+
 async function ensureSession() {
-  const jar = await cookies(); // <-- await (Next 15 typing)
+  const jar = await cookies(); // ok for your setup
   let sid = jar.get('pm_sid')?.value;
 
   if (!sid) {
     sid = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    // set a non-HTTPOnly, Lax cookie for attribution
     jar.set('pm_sid', sid, {
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 180, // 180 days
+      maxAge: 60 * 60 * 24 * 180,
     });
   }
   return sid;
@@ -24,6 +25,12 @@ async function ensureSession() {
 
 export async function POST(req: NextRequest) {
   try {
+    // (optional) fail fast if the token is not present in the env
+    if (!BLOB_TOKEN) {
+      console.error('Blob token missing: set BLOBV2_READ_WRITE_TOKEN in env');
+      return NextResponse.json({ ok: false }, { status: 500 });
+    }
+
     const sid = await ensureSession();
     const payload = await req.json().catch(() => ({}));
     const now = new Date().toISOString();
@@ -40,14 +47,15 @@ export async function POST(req: NextRequest) {
       ua: req.headers.get('user-agent') || '',
     };
 
-    // 🔒 safer, more unique key generation
+    // safer, unique key
     const nonce = Math.random().toString(36).slice(2, 10);
-    const key = `events/${evt.type}/${now.slice(0,10)}/${Date.now()}-${nonce}.json`;
+    const key = `events/${evt.type || 'Unknown'}/${now.slice(0,10)}/${Date.now()}-${nonce}.json`;
 
     await put(key, JSON.stringify(evt), {
-      access: 'public',                // required by @vercel/blob typings
+      access: 'public',
       contentType: 'application/json',
-      addRandomSuffix: true,           // adds an extra unguessable suffix
+      addRandomSuffix: true,
+      token: BLOB_TOKEN,              // 👈 pass the token here
     });
 
     return NextResponse.json({ ok: true });
