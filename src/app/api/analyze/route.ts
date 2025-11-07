@@ -111,9 +111,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
     }
 
-    const email = (await cookies()).get('pm_email')?.value || '';
-    if (!email)
-      return NextResponse.json({ error: 'Email required' }, { status: 401 });
+    // Email is now optional; keep if present for analytics, otherwise mark anonymous
+    const email = (await cookies()).get('pm_email')?.value || 'anonymous';
 
     const form = await req.formData();
     const image = form.get('image');
