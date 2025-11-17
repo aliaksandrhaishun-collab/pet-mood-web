@@ -236,8 +236,22 @@ export default function HomeClient() {
       setResult(payload);
       setAnimKey((k) => k + 1);
 
-      if (payload?.uploadId) logEvt('Upload_Complete', { uploadId: payload.uploadId });
-      else logEvt('Upload_Complete');
+      if (payload?.uploadId) {
+        logEvt('Upload_Complete', { uploadId: payload.uploadId });
+      } else {
+        logEvt('Upload_Complete');
+      }
+
+      // 🔵 NEW: Facebook Pixel custom event for successful, unblocked uploads
+      if (!payload.blocked && typeof fbq === 'function') {
+        try {
+          fbq('trackCustom', 'PhotoUpload', {
+            uploadId: payload.uploadId ?? null,
+          });
+        } catch {
+          // ignore pixel errors
+        }
+      }
     } catch (e) {
       console.error('Analyze error:', e);
       setErr('Analyze failed');
