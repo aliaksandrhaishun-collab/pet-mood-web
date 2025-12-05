@@ -17,12 +17,14 @@ async function logEvt(type: string, data: Record<string, unknown> = {}) {
       body: JSON.stringify({ type, ...data }),
       keepalive: true,
     });
-  } catch { /* ignore */ }
+  } catch {
+    // ignore
+  }
 }
 
 /* Small cookie helper (to read which CTA variant the user was assigned) */
 function getCookie(name: string) {
-  return document.cookie.split('; ').find(r => r.startsWith(name + '='))?.split('=')[1];
+  return document.cookie.split('; ').find((r) => r.startsWith(name + '='))?.split('=')[1];
 }
 
 /* -------------------- API TYPES -------------------- */
@@ -48,7 +50,22 @@ const s = (v: unknown, fb = '') => (typeof v === 'string' ? v : v == null ? fb :
 const lc = (t: string) => t.toLowerCase();
 
 function titleCase(input: string): string {
-  const small = new Set(['and','or','the','a','an','to','of','in','on','for','at','by','with','from']);
+  const small = new Set([
+    'and',
+    'or',
+    'the',
+    'a',
+    'an',
+    'to',
+    'of',
+    'in',
+    'on',
+    'for',
+    'at',
+    'by',
+    'with',
+    'from',
+  ]);
   return input
     .toLowerCase()
     .split(/\s+/)
@@ -66,7 +83,8 @@ const tc = (v: unknown, fb = '') => titleCase(s(v, fb));
 function speciesFromBreed(label: string): string {
   const L = lc(label || '');
   if (/\b(cat|feline|siamese|maine coon|ragdoll|tabby)\b/.test(L)) return 'Cat';
-  if (/\b(dog|canine|shepherd|retriever|bulldog|poodle|terrier|dachshund|chihuahua|shiba|husky)\b/.test(L)) return 'Dog';
+  if (/\b(dog|canine|shepherd|retriever|bulldog|poodle|terrier|dachshund|chihuahua|shiba|husky)\b/.test(L))
+    return 'Dog';
   if (/\b(bird|parrot|cockatiel|budgie|finch|macaw)\b/.test(L)) return 'Bird';
   if (/\b(rabbit|bunny)\b/.test(L)) return 'Rabbit';
   if (/\b(hamster|gerbil|guinea pig|ferret)\b/.test(L)) return 'Small Pet';
@@ -79,20 +97,25 @@ function speciesFromBreed(label: string): string {
 function enrichCareTip(text: string): string {
   let t = s(text).trim();
 
-  t = t.replace(/check for debris\b\.?/i,
-    'Check for debris between paw pads; remove with a damp cloth and snip tiny mats using blunt-nose scissors (don’t pull).'
+  t = t.replace(
+    /check for debris\b\.?/i,
+    'Check for debris between paw pads; remove with a damp cloth and snip tiny mats using blunt-nose scissors (don’t pull).',
   );
-  t = t.replace(/clean teeth\b\.?/i,
-    'Brush teeth with pet-safe toothpaste tonight (30–60s per side); heavy tartar → schedule a dental exam.'
+  t = t.replace(
+    /clean teeth\b\.?/i,
+    'Brush teeth with pet-safe toothpaste tonight (30–60s per side); heavy tartar → schedule a dental exam.',
   );
-  t = t.replace(/trim nails\b\.?/i,
-    'Trim nails just above the quick; if unsure, use a grinder and take tiny passes once a week.'
+  t = t.replace(
+    /trim nails\b\.?/i,
+    'Trim nails just above the quick; if unsure, use a grinder and take tiny passes once a week.',
   );
-  t = t.replace(/wipe eyes\b\.?/i,
-    'Wipe tear stains with sterile saline on a soft pad; yellow/green discharge → vet check.'
+  t = t.replace(
+    /wipe eyes\b\.?/i,
+    'Wipe tear stains with sterile saline on a soft pad; yellow/green discharge → vet check.',
   );
-  t = t.replace(/groom coat\b\.?/i,
-    'Brush the coat in sections toward growth; for a mat, hold hair at the base and work slowly with detangler.'
+  t = t.replace(
+    /groom coat\b\.?/i,
+    'Brush the coat in sections toward growth; for a mat, hold hair at the base and work slowly with detangler.',
   );
 
   if (t.length < 24 || /not clearly visible/i.test(t)) return '';
@@ -174,7 +197,10 @@ export default function HomeClient() {
   // Reveal animation timing
   useEffect(() => {
     if (!result || result.blocked) {
-      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
       return;
     }
 
@@ -207,7 +233,12 @@ export default function HomeClient() {
   }
 
   function isApiError(x: unknown): x is ApiError {
-    return typeof x === 'object' && x !== null && 'error' in x && typeof (x as { error: unknown }).error === 'string';
+    return (
+      typeof x === 'object' &&
+      x !== null &&
+      'error' in x &&
+      typeof (x as { error: unknown }).error === 'string'
+    );
   }
 
   /* -------------------- TRACKED ANALYZE FLOW -------------------- */
@@ -216,6 +247,7 @@ export default function HomeClient() {
     setLoading(true);
     setErr(null);
 
+    // First-party event: user started an upload
     logEvt('Upload_Start');
 
     try {
@@ -236,20 +268,26 @@ export default function HomeClient() {
       setResult(payload);
       setAnimKey((k) => k + 1);
 
+      // First-party “completed” event
       if (payload?.uploadId) {
         logEvt('Upload_Complete', { uploadId: payload.uploadId });
       } else {
         logEvt('Upload_Complete');
       }
 
-      // 🔵 NEW: Facebook Pixel custom event for successful, unblocked uploads
-      if (!payload.blocked && typeof fbq === 'function') {
+      // 🔵 Fire Facebook custom event for successful, unblocked photo analysis
+      if (typeof fbq === 'function' && !payload.blocked) {
+        const variant = getCookie('pm_variant');
         try {
           fbq('trackCustom', 'PhotoUpload', {
             uploadId: payload.uploadId ?? null,
+            variant: variant ?? null,
+            emotion: payload.emotion?.label ?? null,
+            breed: payload.breed_guess?.label ?? null,
           });
-        } catch {
-          // ignore pixel errors
+        } catch (err) {
+          // Don’t break the app if pixel throws
+          console.error('fbq PhotoUpload error', err);
         }
       }
     } catch (e) {
@@ -388,8 +426,22 @@ export default function HomeClient() {
                             url: c.url,
                             uploadId: result?.uploadId,
                           });
-                          try { if (typeof fbq === 'function') fbq('trackCustom', 'Product_Click', { variant, label: c.label, uploadId: result?.uploadId }); } catch {}
-                          try { if (typeof gtag === 'function') gtag('event', 'Product_Click', { variant, label: c.label, uploadId: result?.uploadId }); } catch {}
+                          try {
+                            if (typeof fbq === 'function')
+                              fbq('trackCustom', 'Product_Click', {
+                                variant,
+                                label: c.label,
+                                uploadId: result?.uploadId,
+                              });
+                          } catch {}
+                          try {
+                            if (typeof gtag === 'function')
+                              gtag('event', 'Product_Click', {
+                                variant,
+                                label: c.label,
+                                uploadId: result?.uploadId,
+                              });
+                          } catch {}
                         }}
                       >
                         {c.label} ↗
@@ -412,7 +464,9 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="pm-bubbleRowCard">
       <div className="pm-bubbleRow">
         <div className="pm-bubbleLabel">{label}</div>
-        <div className="pm-bubbleValue" style={{ whiteSpace: 'pre-line' }}>{value}</div>
+        <div className="pm-bubbleValue" style={{ whiteSpace: 'pre-line' }}>
+          {value}
+        </div>
       </div>
     </div>
   );
