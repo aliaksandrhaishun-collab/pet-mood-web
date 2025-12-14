@@ -1,10 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/app/fbpixel.tsx
 'use client';
 
 import Script from 'next/script';
 import { useEffect } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 
 type AnalyticsArg =
   | string
@@ -32,7 +31,6 @@ export default function FacebookPixel() {
   const pixelId = process.env.NEXT_PUBLIC_FB_PIXEL_ID;
 
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   // Track PageView on client-side route changes (SPA navigation)
   useEffect(() => {
@@ -41,7 +39,7 @@ export default function FacebookPixel() {
     if (typeof window.fbq !== 'function') return;
 
     window.fbq('track', 'PageView');
-  }, [pixelId, pathname, searchParams]);
+  }, [pixelId, pathname]);
 
   if (!pixelId) return null;
 
@@ -65,8 +63,8 @@ export default function FacebookPixel() {
           `,
         }}
       />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <noscript>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           height="1"
           width="1"
