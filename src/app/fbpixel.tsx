@@ -5,10 +5,21 @@ import Script from 'next/script';
 import { useEffect } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 
+type AnalyticsArg =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | Record<string, unknown>
+  | AnalyticsArg[];
+
+type AnalyticsFn = (...args: AnalyticsArg[]) => void;
+
 declare global {
   interface Window {
-    fbq?: (...args: any[]) => void;
-    _fbq?: (...args: any[]) => void;
+    fbq?: AnalyticsFn;
+    _fbq?: AnalyticsFn;
   }
 }
 
@@ -53,6 +64,7 @@ export default function FacebookPixel() {
           `,
         }}
       />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <noscript>
         <img
           height="1"
