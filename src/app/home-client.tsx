@@ -4,15 +4,26 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import MonetizationCTAs from '../components/MonetizationCTAs';
 
-// Optional analytics globals
+// Optional analytics globals (typed without `any` to satisfy eslint)
+type AnalyticsArg =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | Record<string, unknown>
+  | AnalyticsArg[];
+
+type AnalyticsFn = (...args: AnalyticsArg[]) => void;
+
 declare global {
   interface Window {
-    fbq?: (...args: any[]) => void;
-    gtag?: (...args: any[]) => void;
+    fbq?: AnalyticsFn;
+    gtag?: AnalyticsFn;
   }
 }
 
-function safeFbq(...args: any[]) {
+function safeFbq(...args: AnalyticsArg[]) {
   try {
     if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
       window.fbq(...args);
@@ -22,7 +33,7 @@ function safeFbq(...args: any[]) {
   }
 }
 
-function safeGtag(...args: any[]) {
+function safeGtag(...args: AnalyticsArg[]) {
   try {
     if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
       window.gtag(...args);
