@@ -1,73 +1,67 @@
+// src/app/fbpixel.tsx
 'use client';
 
+import Script from 'next/script';
 import { useEffect } from 'react';
-
-// Define a safe argument type for fbq
-type FbqArgument =
-  | string
-  | number
-  | boolean
-  | Record<string, unknown>
-  | null
-  | undefined;
-
-// fbq function type: first param is event name, rest are payloads/options
-type FbqFn = ((event: FbqArgument, ...rest: FbqArgument[]) => void) & {
-  queue?: FbqArgument[][];
-  loaded?: boolean;
-  version?: string;
-};
+import { usePathname, useSearchParams } from 'next/navigation';
 
 declare global {
   interface Window {
-    fbq?: FbqFn;
-    _fbq?: FbqFn;
+    fbq?: (...args: any[]) => void;
+    _fbq?: (...args: any[]) => void;
   }
 }
 
 /**
- * Mounts the Facebook Pixel once per app load.
- * Uses NEXT_PUBLIC_FB_PIXEL_ID from env.
+ * Loads Meta Pixel once and tracks PageView on App Router navigations.
+ * Requires NEXT_PUBLIC_FB_PIXEL_ID in env.
  */
 export default function FacebookPixel() {
+  const pixelId = process.env.NEXT_PUBLIC_FB_PIXEL_ID;
+
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Track PageView on client-side route changes (SPA navigation)
   useEffect(() => {
-    const pixelId = process.env.NEXT_PUBLIC_FB_PIXEL_ID;
     if (!pixelId) return;
-
     if (typeof window === 'undefined') return;
+    if (typeof window.fbq !== 'function') return;
 
-    // If already initialized, just send a PageView
-    if (window.fbq && window.fbq.loaded) {
-      window.fbq('track', 'PageView');
-      return;
-    }
+    window.fbq('track', 'PageView');
+  }, [pixelId, pathname, searchParams]);
 
-    // Create stub fbq that queues calls until the script loads
-    const fbq: FbqFn = ((event: FbqArgument, ...rest: FbqArgument[]) => {
-      fbq.queue = fbq.queue || [];
-      fbq.queue.push([event, ...rest]);
-    }) as FbqFn;
+  if (!pixelId) return null;
 
-    fbq.queue = [];
-    fbq.version = '2.0';
-    fbq.loaded = false;
-
-    window.fbq = fbq;
-    window._fbq = fbq;
-
-    // Inject the Pixel script
-    const script = document.createElement('script');
-    script.async = true;
-    script.src = 'https://connect.facebook.net/en_US/fbevents.js';
-    script.onload = () => {
-      fbq.loaded = true;
-    };
-    document.head.appendChild(script);
-
-    // Init + PageView
-    fbq('init', pixelId);
-    fbq('track', 'PageView');
-  }, []);
-
-  return null;
+  return (
+    <>
+      <Script
+        id="meta-pixel"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `
+            !function(f,b,e,v,n,t,s)
+            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+            n.queue=[];t=b.createElement(e);t.async=!0;
+            t.src=v;s=b.getElementsByTagName(e)[0];
+            s.parentNode.insertBefore(t,s)}(window, document,'script',
+            'https://connect.facebook.net/en_US/fbevents.js');
+            fbq('init', '${pixelId}');
+            fbq('track', 'PageView');
+          `,
+        }}
+      />
+      <noscript>
+        <img
+          height="1"
+          width="1"
+          style={{ display: 'none' }}
+          src={`https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1`}
+          alt=""
+        />
+      </noscript>
+    </>
+  );
 }

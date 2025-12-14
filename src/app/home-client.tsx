@@ -4,9 +4,49 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import MonetizationCTAs from '../components/MonetizationCTAs';
 
-// Optional analytics globals (no ts-ignore needed)
-declare const fbq: ((...args: unknown[]) => void) | undefined;
-declare const gtag: ((...args: unknown[]) => void) | undefined;
+// Optional analytics globals
+declare global {
+  interface Window {
+    fbq?: (...args: any[]) => void;
+    gtag?: (...args: any[]) => void;
+  }
+}
+
+function safeFbq(...args: any[]) {
+  try {
+    if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+      window.fbq(...args);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function safeGtag(...args: any[]) {
+  try {
+    if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
+      window.gtag(...args);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+// Wait for Meta Pixel to be ready before firing an event (prevents missing events due to async load)
+function fireFbqWhenReady(callback: () => void, timeoutMs = 2000) {
+  const start = Date.now();
+
+  const tick = () => {
+    if (typeof window !== 'undefined' && typeof window.fbq === 'function') {
+      callback();
+      return;
+    }
+    if (Date.now() - start >= timeoutMs) return;
+    setTimeout(tick, 50);
+  };
+
+  tick();
+}
 
 /* -------------------- FIRST-PARTY EVENT LOGGER -------------------- */
 async function logEvt(type: string, data: Record<string, unknown> = {}) {
@@ -275,20 +315,18 @@ export default function HomeClient() {
         logEvt('Upload_Complete');
       }
 
-      // 🔵 Fire Facebook custom event for successful, unblocked photo analysis
-      if (typeof fbq === 'function' && !payload.blocked) {
+      // 🔵 Fire Meta (Facebook) custom event for successful, unblocked photo analysis
+      if (!payload.blocked) {
         const variant = getCookie('pm_variant');
-        try {
-          fbq('trackCustom', 'PhotoUpload', {
+
+        fireFbqWhenReady(() => {
+          window.fbq?.('trackCustom', 'PhotoUpload', {
             uploadId: payload.uploadId ?? null,
             variant: variant ?? null,
             emotion: payload.emotion?.label ?? null,
             breed: payload.breed_guess?.label ?? null,
           });
-        } catch (err) {
-          // Don’t break the app if pixel throws
-          console.error('fbq PhotoUpload error', err);
-        }
+        });
       }
     } catch (e) {
       console.error('Analyze error:', e);
@@ -426,22 +464,18 @@ export default function HomeClient() {
                             url: c.url,
                             uploadId: result?.uploadId,
                           });
-                          try {
-                            if (typeof fbq === 'function')
-                              fbq('trackCustom', 'Product_Click', {
-                                variant,
-                                label: c.label,
-                                uploadId: result?.uploadId,
-                              });
-                          } catch {}
-                          try {
-                            if (typeof gtag === 'function')
-                              gtag('event', 'Product_Click', {
-                                variant,
-                                label: c.label,
-                                uploadId: result?.uploadId,
-                              });
-                          } catch {}
+                          fireFbqWhenReady(() => {
+                            safeFbq('trackCustom', 'Product_Click', {
+                              variant,
+                              label: c.label,
+                              uploadId: result?.uploadId,
+                            });
+                          });
+                          safeGtag('event', 'Product_Click', {
+                            variant,
+                            label: c.label,
+                            uploadId: result?.uploadId,
+                          });
                         }}
                       >
                         {c.label} ↗

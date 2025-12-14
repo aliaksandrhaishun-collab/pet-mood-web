@@ -6,7 +6,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import FacebookPixel from './fbpixel';
 
-const inter = Inter({ subsets: ['latin'] }); // <— simple className, no variables
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: "Pet Mood – What's your pet feeling?",
@@ -17,8 +17,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      {/* Apply Inter directly to body to avoid any CSS override issues */}
       <body className={inter.className}>
+        {/* Keep this near the top of <body> so it mounts early */}
         <FacebookPixel />
         {children}
         <Analytics />
